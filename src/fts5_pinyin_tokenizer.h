@@ -1,9 +1,10 @@
-#ifndef _FTS5_CUSTOM_TOKENIZER_H_
-#define _FTS5_CUSTOM_TOKENIZER_H_
+#ifndef MY_TOKENIZER_H
+#define MY_TOKENIZER_H
 
-#include "fts5.h"
+#include "sqlite3.h"
+#include <stdint.h>
 
-/* Function to register the custom tokenizer */
-int sqlite3Fts5CustomTokenizerInit(fts5_api *pApi);
+/* Register the custom tokenizer with FTS5 */
+int my_tokenizer_register(sqlite3 *db);
 
-#endif /* _FTS5_CUSTOM_TOKENIZER_H_ */
+#endif /* MY_TOKENIZER_H */

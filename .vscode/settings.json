@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "fts5_pinyin_tokenizer.h": "c",
+        "assert.h": "c"
+    }
+}

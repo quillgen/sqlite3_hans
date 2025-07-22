@@ -13,11 +13,13 @@ list(APPEND SQLCIPHER_CFLAGS
   -DSQLITE_OMIT_DEPRECATED
   -DSQLITE_EXTRA_INIT=sqlcipher_extra_init
   -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown
+  -DSQLITE_CORE
 )
 
 set(SQLCIPHER_SOURCES
   src/sqlite3.c
   src/fts5_pinyin_tokenizer.c
+  src/fts5_pinyin_init.c
 )
 
 add_library(sqlite3 SHARED ${SQLCIPHER_SOURCES})
