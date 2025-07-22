@@ -52,7 +52,14 @@ target_link_libraries(sqlite3 PRIVATE OpenSSL::Crypto ${CMAKE_DL_LIBS})
 
 add_executable(sqlcipher src/shell.c)
 target_compile_options(sqlcipher PRIVATE ${SQLCIPHER_CFLAGS})
+
 target_link_libraries(sqlcipher PRIVATE sqlite3)
+if(UNIX AND NOT APPLE)
+  target_link_libraries(sqlcipher PRIVATE dl pthread)
+endif()
+if(MATH_LIBRARY)
+  target_link_libraries(sqlcipher PRIVATE ${MATH_LIBRARY})
+endif()
 
 install(TARGETS sqlite3
   ARCHIVE DESTINATION lib
