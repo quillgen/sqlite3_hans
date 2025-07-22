@@ -1,0 +1,5 @@
+/src/sqlcipher.c
+/src/sqlcipher.h
+/src/sqlcipherext.h
+/src/fts5.h
+/src/sqlcipher_shell.c
