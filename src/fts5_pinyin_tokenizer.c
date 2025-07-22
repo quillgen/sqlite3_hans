@@ -149,7 +149,7 @@ int my_tokenizer_register(sqlite3 *db)
         return SQLITE_ERROR;
 
     /* Register the tokenizer with the name "mytokenizer" */
-    rc = pApi->xCreateTokenizer(pApi, "mytokenizer",
+    rc = pApi->xCreateTokenizer(pApi, "pinyin",
                                 NULL, &myTokenizerModule,
                                 NULL);
 

@@ -11,5 +11,6 @@ jobs:
       - run: |
           ./copy-sqlite3-src.sh
       - run: |
-          cmake . && make
+          mkdir build && cd build
+          cmake .. && make
           
