@@ -14,6 +14,7 @@ list(APPEND SQLCIPHER_CFLAGS
   -DSQLITE_EXTRA_INIT=sqlcipher_extra_init
   -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown
   -DSQLITE_CORE
+  -DHAVE_STDINT_H
 )
 
 set(SQLCIPHER_SOURCES
