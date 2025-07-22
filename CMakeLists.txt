@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(SQLCipher VERSION 3.38.0 LANGUAGES C)
 
+find_library(MATH_LIBRARY m)
 find_package(OpenSSL REQUIRED)
 
 set(SQLCIPHER_CFLAGS "")
@@ -33,6 +34,20 @@ target_include_directories(sqlite3
 )
 
 target_compile_options(sqlite3 PRIVATE ${SQLCIPHER_CFLAGS})
+
+if(UNIX)
+  if(APPLE)
+    # macOS specific flags
+    target_link_libraries(sqlite3 PRIVATE ${MATH_LIBRARY})
+  else()
+    # Linux specific flags
+    target_link_libraries(sqlite3 PRIVATE dl pthread ${MATH_LIBRARY})
+  endif()
+else()
+  # Windows
+  target_link_libraries(sqlite3 PRIVATE ${MATH_LIBRARY})
+endif()
+
 target_link_libraries(sqlite3 PRIVATE OpenSSL::Crypto ${CMAKE_DL_LIBS})
 
 add_executable(sqlcipher src/shell.c)
