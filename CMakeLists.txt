@@ -16,33 +16,33 @@ list(APPEND SQLCIPHER_CFLAGS
 )
 
 set(SQLCIPHER_SOURCES
-  src/sqlcipher.c
+  src/sqlite3.c
   src/fts5_pinyin_tokenizer.c
 )
 
-add_library(sqlcipher ${SQLCIPHER_SOURCES})
+add_library(sqlite3 SHARED ${SQLCIPHER_SOURCES})
 
-target_include_directories(sqlcipher
+target_include_directories(sqlite3
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE
     ${OPENSSL_INCLUDE_DIR}
 )
 
+target_compile_options(sqlite3 PRIVATE ${SQLCIPHER_CFLAGS})
+target_link_libraries(sqlite3 PRIVATE OpenSSL::Crypto ${CMAKE_DL_LIBS})
+
+add_executable(sqlcipher src/shell.c)
 target_compile_options(sqlcipher PRIVATE ${SQLCIPHER_CFLAGS})
-target_link_libraries(sqlcipher PRIVATE OpenSSL::Crypto ${CMAKE_DL_LIBS})
+target_link_libraries(sqlcipher PRIVATE sqlite3)
 
-add_executable(sqlcipher_shell src/sqlcipher_shell.c)
-target_compile_options(sqlcipher_shell PRIVATE ${SQLCIPHER_CFLAGS})
-target_link_libraries(sqlcipher_shell PRIVATE sqlcipher)
-
-install(TARGETS sqlcipher
+install(TARGETS sqlite3
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS sqlcipher_shell
+install(TARGETS sqlite3
   RUNTIME DESTINATION bin
 )
 
