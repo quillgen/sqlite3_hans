@@ -2,6 +2,8 @@
     "files.associations": {
         "fts5_pinyin_tokenizer.h": "c",
         "assert.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "fts5_jieba_tokenizer.h": "c",
+        "fts5_hans.h": "c"
     }
 }

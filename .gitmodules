@@ -1,3 +1,6 @@
 [submodule "deps/sqlcipher"]
 	path = deps/sqlcipher
 	url = git@github.com:quillgen/sqlcipher.git
+[submodule "deps/cppjieba"]
+	path = deps/cppjieba
+	url = git@github.com:yanyiwu/cppjieba.git

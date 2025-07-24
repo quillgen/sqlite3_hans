@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(SQLCipher VERSION 3.38.0 LANGUAGES C)
+project(SQLCipher VERSION 3.38.0 LANGUAGES C CXX)
 
 find_library(MATH_LIBRARY m)
 find_package(OpenSSL REQUIRED)
@@ -14,23 +14,28 @@ list(APPEND SQLCIPHER_CFLAGS
   -DSQLITE_OMIT_DEPRECATED
   -DSQLITE_EXTRA_INIT=sqlcipher_extra_init
   -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown
-  -DSQLITE_CORE
   -DHAVE_STDINT_H
+  -DSQLITE_EXTRA_AUTOEXT=sqlite3_fts5_hans_init
 )
 
 set(SQLCIPHER_SOURCES
   src/sqlite3.c
-  src/fts5_pinyin_tokenizer.c
-  src/fts5_pinyin_init.c
+  src/fts5_hans.cpp
 )
 
 add_library(sqlite3 SHARED ${SQLCIPHER_SOURCES})
+
+set_target_properties(sqlite3 PROPERTIES
+  CXX_STANDARD 11
+  CXX_STANDARD_REQUIRED ON
+)
 
 target_include_directories(sqlite3
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE
     ${OPENSSL_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/deps/cppjieba/include
 )
 
 target_compile_options(sqlite3 PRIVATE ${SQLCIPHER_CFLAGS})
