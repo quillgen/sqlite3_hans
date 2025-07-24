@@ -36,6 +36,7 @@ target_include_directories(sqlite3
   PRIVATE
     ${OPENSSL_INCLUDE_DIR}
     ${CMAKE_SOURCE_DIR}/deps/cppjieba/include
+    ${CMAKE_SOURCE_DIR}/deps/limonp/include
 )
 
 target_compile_options(sqlite3 PRIVATE ${SQLCIPHER_CFLAGS})

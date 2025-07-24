@@ -1,7 +1,10 @@
 #ifndef __FTS5_HANS_H
 #define __FTS5_HANS_H
 
-#include <sqlite3.h>
+#include <sqlite3ext.h>
+
+#include "cppjieba/Jieba.hpp"
+#include "cppjieba/KeywordExtractor.hpp"
 
 #ifdef __cplusplus
 extern "C"
@@ -19,7 +22,7 @@ extern "C"
 
 typedef struct Fts5HansTokenizer
 {
-    int unused; /* Placeholder */
+    cppjieba::Jieba *jieba;
 } Fts5HansTokenizer;
 
 #endif
