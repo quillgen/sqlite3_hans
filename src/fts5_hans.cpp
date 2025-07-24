@@ -10,15 +10,44 @@ SQLITE_EXTENSION_INIT1
 __declspec(dllexport)
 #endif
 
-int
-sqlite3_fts5_hans_init(
+// Global static jieba instance for better performance
+static std::string jieba_dict_path = "./dict/";
+static cppjieba::Jieba *g_jieba = nullptr;
+static std::mutex g_jieba_mutex; // For thread safety
+
+int sqlite3_fts5_hans_init(
     sqlite3 *db,
     char **pzErrMsg,
     const sqlite3_api_routines *pApi)
 {
     int rc = SQLITE_OK;
     SQLITE_EXTENSION_INIT2(pApi);
+
+    get_jieba_instance();
+
     return fts5_hans_tokenizer_register(db);
+}
+
+static cppjieba::Jieba *get_jieba_instance()
+{
+    std::lock_guard<std::mutex> lock(g_jieba_mutex);
+    if (g_jieba == nullptr)
+    {
+        try
+        {
+            g_jieba = new cppjieba::Jieba(
+                jieba_dict_path + "jieba.dict.utf8",
+                jieba_dict_path + "hmm_model.utf8",
+                jieba_dict_path + "user.dict.utf8",
+                jieba_dict_path + "idf.utf8",
+                jieba_dict_path + "stop_words.utf8");
+        }
+        catch (const std::exception &e)
+        {
+            fprintf(stderr, "jieba initialization failed: %s\n", e.what());
+        }
+    }
+    return g_jieba;
 }
 
 static int fts5_api_from_db(sqlite3 *db, fts5_api **ppApi)
@@ -46,26 +75,62 @@ int fts5_hans_xCreate(void *sqlite3, const char **azArg, int nArg, Fts5Tokenizer
     if (t == NULL)
         return SQLITE_NOMEM;
 
-    memset(t, 0, sizeof(Fts5HansTokenizer));
+    // Set default options
+    t->use_hmm = true;
 
-    const char *dict_path = "./dict/jieba.dict.utf8";
-    const char *hmm_path = "./dict/hmm_model.utf8";
-    const char *user_dict_path = "./dict/user.dict.utf8";
-    const char *idf_path = "./dict/idf.utf8";
-    const char *stop_word_path = "./dict/stop_words.utf8";
-
-    try
+    // Check if jieba is properly initialized
+    if (get_jieba_instance() == nullptr)
     {
-        t->jieba = new cppjieba::Jieba(dict_path, hmm_path, user_dict_path, idf_path, stop_word_path);
-    }
-    catch (const std::exception &e)
-    {
-        fprintf(stderr, "jieba initialization failed: %s\n", e.what());
         sqlite3_free(t);
         return SQLITE_ERROR;
     }
+
+    // Parse arguments
+    for (int i = 0; i < nArg; i++)
+    {
+        if (strcmp(azArg[i], "no_hmm") == 0)
+        {
+            t->use_hmm = false;
+        }
+        else if (strncmp(azArg[i], "dict_path=", 10) == 0)
+        {
+            jieba_dict_path = azArg[i] + 10;
+            // Note: This won't affect the already initialized jieba instance
+        }
+    }
+
     *ppOut = reinterpret_cast<Fts5Tokenizer *>(t);
     return SQLITE_OK;
+}
+
+// Simple token category enum
+enum class TokenCategory
+{
+    CJK,
+    ALPHA,
+    NUMBER,
+    OTHER
+};
+
+// Function to determine token category from a character
+static TokenCategory from_char(char c)
+{
+    if ((c & 0x80) != 0)
+    { // Crude check for CJK (non-ASCII)
+        return TokenCategory::CJK;
+    }
+    else if (isalpha(c))
+    {
+        return TokenCategory::ALPHA;
+    }
+    else if (isdigit(c))
+    {
+        return TokenCategory::NUMBER;
+    }
+    else
+    {
+        return TokenCategory::OTHER;
+    }
 }
 
 typedef int (*xTokenFn)(void *, int, const char *, int, int, int);
@@ -73,7 +138,8 @@ int fts5_hans_xTokenize(Fts5Tokenizer *pTokenizer, void *pCtx, int flags, const 
                         xTokenFn xToken)
 {
     Fts5HansTokenizer *p = (Fts5HansTokenizer *)pTokenizer;
-    if (nText <= 0)
+
+    if (nText <= 0 || !pText)
         return SQLITE_OK;
 
     // Make a null-terminated copy of the input text
@@ -85,65 +151,46 @@ int fts5_hans_xTokenize(Fts5Tokenizer *pTokenizer, void *pCtx, int flags, const 
     text_copy[nText] = '\0';
 
     std::string text(text_copy);
-    std::vector<std::string> words;
+    std::vector<cppjieba::Word> words;
 
-    // Use jieba to segment the text
-    p->jieba->Cut(text, words, true);
+    cppjieba::Jieba *jieba = get_jieba_instance();
+    if (!jieba)
+    {
+        sqlite3_free(text_copy);
+        return SQLITE_ERROR;
+    }
 
-    // Track byte positions in the UTF-8 string
-    int bytePos = 0;
-    const unsigned char *z = (const unsigned char *)pText;
+    // Use jieba to segment the text with word positions
+    jieba->Cut(text_copy, words, p->use_hmm);
 
     // Process each word found by jieba
     for (const auto &word : words)
     {
-        if (word.empty())
+        if (word.word.empty())
             continue;
 
-        size_t wordLen = word.length();
-
-        // Skip any whitespace or undesired characters
-        while (bytePos < nText &&
-               (z[bytePos] == ' ' || z[bytePos] == '\t' || z[bytePos] == '\n' || z[bytePos] == '\r'))
+        // Determine token category for potential specialized handling
+        TokenCategory category = from_char(word.word[0]);
+        for (auto c : word.word)
         {
-            bytePos++;
+            if (from_char(c) != category)
+            {
+                category = TokenCategory::OTHER;
+                break;
+            }
         }
 
-        // Verify we have enough text left
-        if (bytePos + wordLen > (size_t)nText)
-            break;
+        // Call the token callback function
+        int rc = xToken(pCtx, 0,
+                        pText + word.offset,               // Pointer to start of token in original text
+                        word.word.length(),                // Token length
+                        word.offset,                       // Start position (byte offset)
+                        word.offset + word.word.length()); // End position
 
-        // Verify this is actually our word by comparing
-        if (memcmp(pText + bytePos, word.c_str(), wordLen) == 0)
+        if (rc != SQLITE_OK)
         {
-            // Call the token callback function
-            int rc = xToken(pCtx, 0, pText + bytePos, wordLen, bytePos, bytePos + wordLen);
-            if (rc != SQLITE_OK)
-            {
-                sqlite3_free(text_copy);
-                return rc;
-            }
-            bytePos += wordLen;
-        }
-        else
-        {
-            // We're out of sync, advance character by character until we find our word
-            bool found = false;
-            for (int i = bytePos + 1; i + wordLen <= (size_t)nText; i++)
-            {
-                if (memcmp(pText + i, word.c_str(), wordLen) == 0)
-                {
-                    bytePos = i + wordLen;
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                // Skip this word if we can't find it
-                bytePos++;
-            }
+            sqlite3_free(text_copy);
+            return rc;
         }
     }
 
@@ -154,15 +201,7 @@ int fts5_hans_xTokenize(Fts5Tokenizer *pTokenizer, void *pCtx, int flags, const 
 void fts5_hans_xDelete(Fts5Tokenizer *p)
 {
     Fts5HansTokenizer *t = (Fts5HansTokenizer *)p;
-    if (t)
-    {
-        if (t->jieba)
-        {
-            delete t->jieba;
-            t->jieba = nullptr;
-        }
-        sqlite3_free(t);
-    }
+    sqlite3_free(t);
 }
 
 static fts5_tokenizer tokenizer = {

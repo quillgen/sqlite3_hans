@@ -16,13 +16,14 @@ extern "C"
         const sqlite3_api_routines *pApi);
     int fts5_hans_tokenizer_register(sqlite3 *db);
 
+    static cppjieba::Jieba *get_jieba_instance();
+    typedef struct Fts5HansTokenizer
+    {
+        bool use_hmm;
+    } Fts5HansTokenizer;
+
 #ifdef __cplusplus
 }
 #endif
-
-typedef struct Fts5HansTokenizer
-{
-    cppjieba::Jieba *jieba;
-} Fts5HansTokenizer;
 
 #endif
