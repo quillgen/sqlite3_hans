@@ -6,6 +6,7 @@
         "fts5_jieba_tokenizer.h": "c",
         "fts5_hans.h": "c",
         "__locale": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "__mutex_base": "cpp"
     }
 }

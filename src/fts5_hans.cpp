@@ -1,6 +1,7 @@
 #include "fts5_hans.h"
 #include <stdio.h>
 #include <ctype.h>
+#include <mutex>
 #include "fts5.h"
 
 #include <cstring>
