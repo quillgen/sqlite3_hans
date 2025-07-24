@@ -11,9 +11,15 @@ extern "C"
         sqlite3 *db,
         char **pzErrMsg,
         const sqlite3_api_routines *pApi);
+    int fts5_hans_tokenizer_register(sqlite3 *db);
 
 #ifdef __cplusplus
 }
 #endif
+
+typedef struct Fts5HansTokenizer
+{
+    int unused; /* Placeholder */
+} Fts5HansTokenizer;
 
 #endif
