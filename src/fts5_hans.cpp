@@ -1,11 +1,11 @@
 #include "fts5_hans.h"
 #include <stdio.h>
+#include <ctype.h>
 #include "fts5.h"
 
 /* Add your header comment here */
 #include <sqlite3ext.h> /* Do not use <sqlite3.h>! */
 #include <cstring>
-#include <_ctype.h>
 SQLITE_EXTENSION_INIT1
 
 /* Insert your extension code here */
