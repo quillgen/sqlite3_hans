@@ -2,7 +2,6 @@
 #define __FTS5_HANS_H
 
 #include <sqlite3ext.h>
-
 #include "cppjieba/Jieba.hpp"
 #include "cppjieba/KeywordExtractor.hpp"
 
@@ -10,13 +9,19 @@
 extern "C"
 {
 #endif
+
+    // Manual registration function: pass dictionary file paths array
+    int register_fts5_hans_tokenizer(sqlite3 *db, const char **dict_paths, int num_dicts);
+
+    // Register SQL function: SELECT fts5_hans_load_dicts();
+    int register_fts5_hans_sqlfunc(sqlite3 *db);
+
+    // Standard SQLite extension entry point (does nothing by default)
     int sqlite3_fts5_hans_init(
         sqlite3 *db,
         char **pzErrMsg,
         const sqlite3_api_routines *pApi);
-    int fts5_hans_tokenizer_register(sqlite3 *db);
 
-    static cppjieba::Jieba *get_jieba_instance();
     typedef struct Fts5HansTokenizer
     {
         bool use_hmm;
