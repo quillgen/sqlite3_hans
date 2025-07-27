@@ -7,35 +7,50 @@
 #include <limits.h>
 #include "fts5.h"
 
+#include "cppjieba/Jieba.hpp"
+#include "cppjieba/KeywordExtractor.hpp"
+
 SQLITE_EXTENSION_INIT1
 
 static std::mutex g_jieba_mutex;
 static cppjieba::Jieba *g_jieba = nullptr;
 static std::vector<std::string> g_dicts;
 
-static int set_jieba_dicts(const char **dict_paths, int num_dicts)
+static bool file_exists(const std::string &path)
 {
-    if (num_dicts < 5)
+    return access(path.c_str(), F_OK) == 0;
+}
+
+static int set_jieba_dicts(const char *root_path)
+{
+
+    static const char *default_files[5] = {
+        "jieba.dict.utf8", "hmm_model.utf8", "user.dict.utf8", "idf.utf8", "stop_words.utf8"};
+    std::vector<std::string> dict_paths;
+    std::string root = root_path ? root_path : "";
+    if (!root.empty() && root.back() != '/' && root.back() != '\\')
+        root += '/';
+
+    for (int i = 0; i < 5; ++i)
     {
-        fprintf(stderr, "At least 5 dictionary files required\n");
-        return SQLITE_ERROR;
-    }
-    for (int i = 0; i < num_dicts; ++i)
-    {
-        if (access(dict_paths[i], F_OK) != 0)
+        std::string path = root + default_files[i];
+        if (!file_exists(path))
         {
-            fprintf(stderr, "Dictionary file does not exist: %s\n", dict_paths[i]);
-            return SQLITE_ERROR;
+            fprintf(stderr, "Dictionary file does not exist: %s\n", path.c_str());
+            return -1; // Or your error code
         }
+        dict_paths.push_back(path);
     }
-    std::lock_guard<std::mutex> lock(g_jieba_mutex);
-    g_dicts.clear();
-    for (int i = 0; i < num_dicts; ++i)
-        g_dicts.push_back(dict_paths[i]);
-    if (g_jieba)
     {
-        delete g_jieba;
-        g_jieba = nullptr;
+        std::lock_guard<std::mutex> lock(g_jieba_mutex);
+        g_dicts = dict_paths;
+
+        // Reset the Jieba instance so it will be recreated with new dicts
+        if (g_jieba)
+        {
+            delete g_jieba;
+            g_jieba = nullptr;
+        }
     }
     return 0;
 }
@@ -178,51 +193,8 @@ int fts5_hans_tokenizer_register(sqlite3 *db)
     rc = fts5_api_from_db(db, &fts5api);
     if (rc != SQLITE_OK || !fts5api)
         return (rc != SQLITE_OK) ? rc : SQLITE_ERROR;
-    rc = fts5api->xCreateTokenizer(fts5api, "fts5_hans", reinterpret_cast<void *>(fts5api), &tokenizer, NULL);
+    rc = fts5api->xCreateTokenizer(fts5api, "jieba", reinterpret_cast<void *>(fts5api), &tokenizer, NULL);
     return rc;
-}
-
-int register_fts5_hans_tokenizer(sqlite3 *db, const char **dict_paths, int num_dicts)
-{
-    if (num_dicts < 1)
-    {
-        fprintf(stderr, "At least 1 jieba dict files required\n");
-        return SQLITE_ERROR;
-    }
-    set_jieba_dicts(dict_paths, num_dicts);
-    return fts5_hans_tokenizer_register(db);
-}
-
-static void fts5_hans_register_default(sqlite3_context *ctx, int argc, sqlite3_value **argv)
-{
-    // Use default dict paths in current directory
-    static const char *default_files[5] = {
-        "jieba.dict.utf8",
-        "hmm_model.utf8",
-        "user.dict.utf8",
-        "idf.utf8",
-        "stop_words.utf8"};
-    char cwd[PATH_MAX];
-    if (!getcwd(cwd, sizeof(cwd)))
-    {
-        sqlite3_result_error(ctx, "getcwd failed", -1);
-        return;
-    }
-    std::vector<std::string> paths;
-    for (int i = 0; i < 5; ++i)
-    {
-        std::string p = std::string(cwd) + "/dict/" + default_files[i];
-        paths.push_back(p);
-    }
-    std::vector<const char *> cstrs;
-    for (auto &s : paths)
-        cstrs.push_back(s.c_str());
-    sqlite3 *db = sqlite3_context_db_handle(ctx);
-    int rc = register_fts5_hans_tokenizer(db, cstrs.data(), 5);
-    if (rc == SQLITE_OK)
-        sqlite3_result_text(ctx, "ok", -1, SQLITE_STATIC);
-    else
-        sqlite3_result_error_code(ctx, rc);
 }
 
 static void fts5_hans_print_dict_paths_sql(sqlite3_context *ctx, int argc, sqlite3_value **argv)
@@ -244,12 +216,59 @@ static void fts5_hans_print_dict_paths_sql(sqlite3_context *ctx, int argc, sqlit
     sqlite3_result_text(ctx, msg.c_str(), -1, SQLITE_TRANSIENT);
 }
 
+static void enable_jieba_tokenizer(sqlite3_context *ctx, int argc, sqlite3_value **argv)
+{
+    const char *root = nullptr;
+    char cwd[PATH_MAX] = {0};
+
+    if (argc != 1)
+    {
+        sqlite3_result_error(ctx, "usage: enable_jieba('/path/to/dir')", -1);
+        return;
+    }
+
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL ||
+        (sqlite3_value_type(argv[0]) == SQLITE_TEXT && sqlite3_value_bytes(argv[0]) == 0))
+    {
+        // Use current working directory if parameter is empty or NULL
+        if (!getcwd(cwd, sizeof(cwd)))
+        {
+            sqlite3_result_error(ctx, "getcwd failed", -1);
+            return;
+        }
+        root = cwd;
+    }
+    else if (sqlite3_value_type(argv[0]) == SQLITE_TEXT)
+    {
+        root = (const char *)sqlite3_value_text(argv[0]);
+    }
+    else
+    {
+        sqlite3_result_error(ctx, "usage: enable_jieba('/path/to/dir')", -1);
+        return;
+    }
+
+    int rc = set_jieba_dicts(root);
+    if (rc != 0)
+    {
+        sqlite3_result_error(ctx, "failed to load jieba dicts", -1);
+        return;
+    }
+    sqlite3 *db = sqlite3_context_db_handle(ctx);
+    rc = fts5_hans_tokenizer_register(db);
+    if (rc != 0)
+    {
+        sqlite3_result_error(ctx, "register tokenizer failed", -1);
+        return;
+    }
+    sqlite3_result_text(ctx, "ok", -1, SQLITE_STATIC);
+}
+
 int sqlite3_fts5_hans_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi)
 {
     SQLITE_EXTENSION_INIT2(pApi);
-    int rc = 0;
-    rc = sqlite3_create_function(db, "fts5_hans_register_default", 0, SQLITE_UTF8, NULL, fts5_hans_register_default, NULL, NULL);
+    int rc = sqlite3_create_function(db, "enable_jieba", 1, SQLITE_UTF8, NULL, enable_jieba_tokenizer, NULL, NULL);
     if (rc != SQLITE_OK)
         return rc;
-    return sqlite3_create_function(db, "fts5_hans_print_dict_paths", 0, SQLITE_UTF8, NULL, fts5_hans_print_dict_paths_sql, NULL, NULL);
+    return sqlite3_create_function(db, "print_jieba_dict_paths", 0, SQLITE_UTF8, NULL, fts5_hans_print_dict_paths_sql, NULL, NULL);
 }
